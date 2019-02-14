@@ -86,6 +86,8 @@ export interface Options {
   saveDownloadHistory?: boolean;
   connectClientTimeout?: number;
   rowsPerPageItems?: any[];
+  defaultSearchSolutionId?: string;
+  searchSolutions?: SearchSolution[];
 }
 
 export interface Plugin {
@@ -106,6 +108,22 @@ export interface SiteSchema {
   searchEntry?: SearchEntry[];
   parser?: Dictionary<any>;
   patterns?: Dictionary<any>;
+  checker?: Dictionary<any>;
+  torrentTagSelectors?: any[];
+}
+
+/**
+ * 站点资源类别（分类）
+ */
+export interface SiteCategory {
+  id?: number | string;
+  name?: string;
+}
+
+export interface SiteCategories {
+  entry?: string;
+  result?: string;
+  category?: SiteCategory[];
 }
 
 /**
@@ -115,6 +133,7 @@ export interface Site {
   id?: string;
   name: string;
   url?: string;
+  cdn?: string[];
   icon?: string;
   schema?: any;
   tags?: string[];
@@ -129,6 +148,9 @@ export interface Site {
   searchEntry?: SearchEntry[];
   parser?: Dictionary<any>;
   patterns?: Dictionary<any>;
+  checker?: Dictionary<any>;
+  torrentTagSelectors?: any[];
+  categories?: SiteCategories[];
 }
 
 /**
@@ -139,6 +161,8 @@ export enum EAction {
   readConfig = "readConfig",
   // 保存参数
   saveConfig = "saveConfig",
+  // 从网络中重新加载配置文件
+  reloadConfig = "reloadConfig",
   // 发送种子到默认的下载服务器（客户端）
   sendTorrentToDefaultClient = "sendTorrentToDefaultClient",
   // 发送种子到指定的客户端
@@ -173,10 +197,26 @@ export enum EAction {
   removeSystemLogs = "removeSystemLogs",
   // 清除系统日志
   clearSystemLogs = "clearSystemLogs",
+  // 读取UI参数
   readUIOptions = "readUIOptions",
+  // 保存UI参数
   saveUIOptions = "saveUIOptions",
   // 在当前选项卡显示消息
-  showMessage = "showMessage"
+  showMessage = "showMessage",
+  // 写入日志
+  writeLog = "writeLog",
+  // 后台服务停止
+  serviceStoped = "serviceStoped",
+  // 增加内容页面
+  addContentPage = "addContentPage",
+  // 取消搜索
+  abortSearch = "abortSearch",
+  // 将参数备份至Google
+  backupToGoogle = "backupToGoogle",
+  // 从Google恢复已备份的参数
+  restoreFromGoogle = "restoreFromGoogle",
+  // 从Google中清除已备份的参数
+  clearFromGoogle = "clearFromGoogle"
 }
 
 export interface Request {
@@ -205,7 +245,8 @@ export enum EConfigKey {
   default = "PT-Plugin-Plus-Config",
   downloadHistory = "PT-Plugin-Plus-downloadHistory",
   systemLogs = "PT-Plugin-Plus-systemLogs",
-  uiOptions = "PT-Plugin-Plus-uiOptions"
+  uiOptions = "PT-Plugin-Plus-uiOptions",
+  cache = "PT-Plugin-Plus-Cache-Contents"
 }
 
 /**
@@ -240,9 +281,14 @@ export interface DataResult {
   data?: any;
 }
 
+/**
+ * 模块名称
+ */
 export enum EModule {
   background = "background",
-  content = "content"
+  content = "content",
+  options = "options",
+  popup = "popup"
 }
 
 export enum ELogEvent {
@@ -251,11 +297,22 @@ export enum ELogEvent {
 }
 
 export interface LogItem {
-  module: string;
+  module?: string;
   event?: string;
   data?: any;
   id?: number | string;
   time?: number;
+  msg?: string;
+}
+
+export interface SearchResultItemTag {
+  color?: string;
+  name?: string;
+}
+
+export interface SearchResultItemCategory {
+  name?: string;
+  link?: string;
 }
 
 /**
@@ -264,25 +321,36 @@ export interface LogItem {
 export interface SearchResultItem {
   site: Site;
   title: string;
+  titleHTML?: string;
   subTitle?: string;
-  time?: number;
+  time?: number | string;
   author?: string;
   url?: string;
   link?: string;
-  size?: number;
-  seeders?: number;
-  leechers?: number;
-  completed?: number;
-  comments?: number;
+  size?: number | string;
+  seeders?: number | string;
+  leechers?: number | string;
+  completed?: number | string;
+  comments?: number | string;
+  uid?: string;
+  tags?: SearchResultItemTag[];
+  entryName?: string;
+  category?: SearchResultItemCategory;
 }
 
 export interface SearchEntry {
+  name?: string;
   entry?: string;
   resultType?: ESearchResultType;
   parseScriptFile?: string;
   parseScript?: string;
   resultSelector?: string;
   enabled?: boolean;
+  tagSelectors?: any[];
+  isCustom?: boolean;
+  id?: string;
+  queryString?: string;
+  categories?: string[];
 }
 
 export interface UIOptions {
@@ -292,4 +360,17 @@ export interface UIOptions {
 export enum EPaginationKey {
   systemLogs = "systemLogs",
   searchTorrent = "searchTorrent"
+}
+
+// 搜索方案
+export interface SearchSolution {
+  id: string;
+  name: string;
+  range: SearchSolutionRange[];
+}
+
+export interface SearchSolutionRange {
+  host?: string;
+  siteName?: string;
+  entry?: string[];
 }

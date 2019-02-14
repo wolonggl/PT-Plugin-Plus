@@ -6,7 +6,8 @@ import {
   SiteSchema,
   EAction,
   EDataResultType,
-  DownloadOptions
+  DownloadOptions,
+  EModule
 } from "@/interface/common";
 import PTPlugin from "./service";
 import URLParse from "url-parse";
@@ -109,6 +110,26 @@ export class ContextMenus {
     if (!site) {
       return;
     }
+
+    // 是否启用选择内容时搜索
+    if (this.options.allowSelectionTextSearch) {
+      let menuId: string = site.host as string;
+      this.siteMenus.push(menuId);
+      // 选中内容进行搜索
+      this.add({
+        id: menuId,
+        title: '仅搜索本站 "%s" 相关的种子',
+        contexts: ["selection"],
+        documentUrlPatterns: [`*://${site.host}/*`],
+        onclick: (
+          info: chrome.contextMenus.OnClickData,
+          tab: chrome.tabs.Tab
+        ) => {
+          this.service.controller.searchTorrent(info.selectionText, host);
+        }
+      });
+    }
+
     this.options.clients.forEach((client: DownloadClient) => {
       if (client.paths) {
         let parentId = `${client.id}-path`;
@@ -134,7 +155,7 @@ export class ContextMenus {
 
           count++;
           paths.forEach((path: string) => {
-            let id = `${client.id}-${host}-${path}`;
+            let id = `${client.id}**${host}**${path}`;
             this.add({
               id,
               title: path,
@@ -146,7 +167,7 @@ export class ContextMenus {
                 info: chrome.contextMenus.OnClickData,
                 tab: chrome.tabs.Tab
               ) => {
-                let data = info.menuItemId.split("-");
+                let data = info.menuItemId.split("**");
                 let options: DownloadOptions = {
                   clientId: data[0],
                   url: info.linkUrl as string,
@@ -226,6 +247,37 @@ export class ContextMenus {
       }
     );
 
+    this.service.logger.add({
+      module: EModule.background,
+      event: "contextMenus.sendTorrentToClient.begin",
+      msg: "正在发送链接至下载服务器",
+      data: options
+    });
+
+    let client = this.options.clients.find((item: DownloadClient) => {
+      return item.id === options.clientId;
+    });
+
+    if (!client) {
+      chrome.tabs.sendMessage(tabid, {
+        action: EAction.showMessage,
+        data: {
+          type: EDataResultType.error,
+          msg: "获取下载服务器失败。"
+        }
+      });
+
+      this.service.logger.add({
+        module: EModule.background,
+        event: "contextMenus.sendTorrentToClient.getClientError",
+        msg: "获取下载服务器失败。",
+        data: options
+      });
+      return;
+    }
+
+    // 设置是否自动开始
+    options.autoStart = client.autoStart;
     console.log(options);
 
     let url = this.getParsedURL(options.url);
@@ -234,7 +286,7 @@ export class ContextMenus {
         action: EAction.showMessage,
         data: url
       });
-      notice && notice.remove && notice.remove();
+      notice && notice.hide && notice.hide();
       return;
     }
 
@@ -243,18 +295,31 @@ export class ContextMenus {
     this.service.controller
       .sendTorrentToClient(options)
       .then((result: any) => {
-        notice && notice.remove && notice.remove();
+        this.service.logger.add({
+          module: EModule.background,
+          event: "contextMenus.sendTorrentToClient.done",
+          msg: "下载链接发送完成。",
+          data: result
+        });
         chrome.tabs.sendMessage(tabid, {
           action: EAction.showMessage,
           data: result
         });
       })
       .catch((result: any) => {
-        notice && notice.remove && notice.remove();
+        this.service.logger.add({
+          module: EModule.background,
+          event: "contextMenus.sendTorrentToClient.error",
+          msg: "下载链接发送失败！",
+          data: result
+        });
         chrome.tabs.sendMessage(tabid, {
           action: EAction.showMessage,
           data: result
         });
+      })
+      .finally(() => {
+        notice && notice.hide && notice.hide();
       });
   }
 
@@ -272,7 +337,7 @@ export class ContextMenus {
           info: chrome.contextMenus.OnClickData,
           tab: chrome.tabs.Tab
         ) => {
-          this.service.controller.openOptions(info.selectionText);
+          this.service.controller.searchTorrent(info.selectionText);
         }
       });
     }
@@ -394,6 +459,7 @@ export class ContextMenus {
     if (!site) {
       return source;
     }
+
     let options = {
       url,
       site,
@@ -401,7 +467,7 @@ export class ContextMenus {
       error: {} as DataResult
     };
 
-    let parser = this.getSiteParser(site, "downloadURL");
+    let parser = this.getSiteParser(site.host as string, "downloadURL");
     if (parser) {
       try {
         eval(parser);
@@ -417,7 +483,24 @@ export class ContextMenus {
     return options.result;
   }
 
-  private getSiteParser(site: Site, name: string): string {
+  /**
+   * 获取指定解析器
+   * @param host
+   * @param name
+   */
+  private getSiteParser(host: string, name: string): string {
+    // 由于解析器可能会更新，所以需要从系统配置中加载
+    let site: Site =
+      this.options.system &&
+      this.options.system.sites &&
+      this.options.system.sites.find((item: Site) => {
+        return item.host === host;
+      });
+
+    if (!site) {
+      return "";
+    }
+
     let result = site.parser && site.parser[name];
     if (!result) {
       let schema: SiteSchema =

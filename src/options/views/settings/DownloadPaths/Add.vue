@@ -8,7 +8,7 @@
           <v-form v-model="valid">
             <v-autocomplete
               v-model="selectedSite"
-              :items="$store.state.options.sites"
+              :items="getSites()"
               label="选择一个站点"
               :menu-props="{maxHeight:'auto'}"
               persistent-hint
@@ -44,6 +44,13 @@
               :hint="words.pathTip"
               :rules="rules.require"
             ></v-textarea>
+            <v-alert
+              :value="true"
+              color="info"
+              icon="info"
+              outline
+              v-if="client.pathDescription"
+            >{{ client.pathDescription}}</v-alert>
           </v-form>
         </v-card-text>
 
@@ -65,7 +72,7 @@
   </div>
 </template>
 <script lang="ts">
-import { Site } from "../../../../interface/common";
+import { Site, DownloadClient } from "@/interface/common";
 import Vue from "vue";
 export default Vue.extend({
   data() {
@@ -87,7 +94,8 @@ export default Vue.extend({
     };
   },
   props: {
-    value: Boolean
+    value: Boolean,
+    client: Object
   },
   model: {
     prop: "value",
@@ -121,6 +129,27 @@ export default Vue.extend({
         return tags.join(", ");
       }
       return "";
+    },
+    getSites(): Site[] {
+      let clients = this.$store.state.options.clients;
+      let sites = this.$store.state.options.sites;
+      let result: Site[] = [];
+      if (clients && clients.length) {
+        let client: DownloadClient = clients.find((item: DownloadClient) => {
+          return item.id === this.client.id;
+        });
+        if (client && client.paths) {
+          sites.forEach((site: Site) => {
+            if (!client.paths.hasOwnProperty(site.host)) {
+              result.push(site);
+            }
+          });
+        } else {
+          result = sites;
+        }
+        return result;
+      }
+      return sites;
     }
   },
   computed: {},

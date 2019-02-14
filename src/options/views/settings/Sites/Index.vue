@@ -60,14 +60,25 @@
             >{{ props.item.url }}</a>
           </td>
           <td>
-            <v-icon small class="mr-2" @click="edit(props.item)">edit</v-icon>
+            <v-icon small class="mr-2" @click="edit(props.item)" :title="words.edit">edit</v-icon>
             <v-icon
               small
               class="mr-2"
               @click="editPlugins(props.item)"
               :title="words.plugins"
             >assistant</v-icon>
-            <v-icon small color="error" @click="removeConfirm(props.item)">delete</v-icon>
+            <v-icon
+              small
+              class="mr-2"
+              @click="editSearchEntry(props.item)"
+              :title="words.searchEntry"
+            >search</v-icon>
+            <v-icon
+              small
+              color="error"
+              @click="removeConfirm(props.item)"
+              :title="words.remove"
+            >delete</v-icon>
           </td>
         </template>
       </v-data-table>
@@ -108,11 +119,14 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { Site } from "../../../../interface/common";
+import { Site, LogItem, EAction, EModule } from "@/interface/common";
 import AddSite from "./Add.vue";
 import EditSite from "./Edit.vue";
 
 import { filters } from "@/service/filters";
+import Extension from "@/service/extension";
+const extension = new Extension();
+
 export default Vue.extend({
   components: {
     AddSite,
@@ -123,11 +137,13 @@ export default Vue.extend({
       words: {
         add: "新增",
         remove: "删除",
+        edit: "编辑",
         importAll: "导入所有",
         removeSelectedConfirm: "确认要删除已选中的站点吗？",
         plugins: "插件",
         title: "站点设置",
-        subTitle: "只有配置过的站点才会显示插件图标及相应的功能。"
+        subTitle: "只有配置过的站点才会显示插件图标及相应的功能。",
+        searchEntry: "搜索入口"
       },
       selected: [],
       pagination: {
@@ -159,7 +175,8 @@ export default Vue.extend({
         }
       ],
       selectedSite: {},
-      dialogRemoveConfirm: false
+      dialogRemoveConfirm: false,
+      options: this.$store.state.options
     };
   },
   methods: {
@@ -244,9 +261,38 @@ export default Vue.extend({
           host: item.host
         }
       });
+    },
+    writeLog(options: LogItem) {
+      extension.sendRequest(EAction.writeLog, null, {
+        module: EModule.options,
+        event: options.event,
+        msg: options.msg,
+        data: options.data
+      });
+    },
+    editSearchEntry(item: Site) {
+      this.$router.push({
+        name: "set-site-search-entry",
+        params: {
+          host: item.host as string
+        }
+      });
     }
   },
   created() {
+    if (!this.options.system) {
+      this.writeLog({
+        event: "Sites.init.error",
+        msg: "系统配置信息丢失"
+      });
+    }
+
+    if (this.options.system && !this.options.system.sites) {
+      this.writeLog({
+        event: "Sites.init.error",
+        msg: "系统配置网站信息丢失"
+      });
+    }
     // this.sites = this.$store.state.options.sites;
   }
 });

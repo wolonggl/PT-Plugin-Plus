@@ -53,7 +53,7 @@
 
     // 格式：vvvid|||passkey|||sslzz
     let key = (new Base64).encode("vvv" + id + "|||" + site.passkey + "|||sslzz");
-    let url = `https://${site.host}/rssdd.php?par=${key}`;
+    let url = `https://${site.host}/rssdd.php?par=${key}&ssl=yes`;
 
     let subTitle = "";
     if (titleStrings.length > 0) {
@@ -72,7 +72,8 @@
       leechers: cells.eq(fieldIndex.leechers).text().split("/")[1] || 0,
       completed: cells.eq(fieldIndex.completed).text() || 0,
       comments: cells.eq(fieldIndex.comments).text() || 0,
-      site: site
+      site: site,
+      entryName: options.entry.name
     };
     options.results.push(data);
   }

@@ -59,41 +59,46 @@
                 ></v-text-field>
               </v-flex>
               <v-flex xs1>
-                <v-slider v-model="options.connectClientTimeout" :max="5000" :min="500" :step="500"></v-slider>
+                <v-slider
+                  v-model="options.connectClientTimeout"
+                  :max="60000"
+                  :min="500"
+                  :step="500"
+                ></v-slider>
               </v-flex>
 
               <v-flex xs12>
-                <v-switch color="success" v-model="options.autoUpdate" :label="words.autoUpdate"></v-switch>
-              </v-flex>
-              <v-flex xs12>
+                <v-switch
+                  color="success"
+                  v-model="options.autoUpdate"
+                  :label="words.autoUpdate+lastUpdate"
+                ></v-switch>
+
                 <v-switch
                   color="success"
                   v-model="options.allowSelectionTextSearch"
                   :label="words.allowSelectionTextSearch"
                 ></v-switch>
-              </v-flex>
 
-              <v-flex xs12>
                 <v-switch
                   color="success"
                   v-model="options.allowDropToSend"
                   :label="words.allowDropToSend"
                 ></v-switch>
-              </v-flex>
-              <v-flex xs12>
+
                 <v-switch
                   color="success"
                   v-model="options.saveDownloadHistory"
                   :label="words.saveDownloadHistory"
                 ></v-switch>
-              </v-flex>
-              <v-flex xs12>
+
                 <v-switch
                   color="success"
                   v-model="options.needConfirmWhenExceedSize"
                   :label="words.needConfirmWhenExceedSize"
                 ></v-switch>
               </v-flex>
+
               <v-flex xs12>
                 <div style="margin: -40px 0 0 40px;">
                   <v-text-field
@@ -131,6 +136,14 @@
         </v-btn>
       </v-card-actions>
     </v-card>
+    <v-snackbar v-model="haveError" absolute top :timeout="3000" color="error">{{ errorMsg }}</v-snackbar>
+    <v-snackbar
+      v-model="haveSuccess"
+      absolute
+      bottom
+      :timeout="3000"
+      color="success"
+    >{{ successMsg }}</v-snackbar>
   </div>
 </template>
 
@@ -148,7 +161,7 @@ export default Vue.extend({
       words: {
         title: "基本设置",
         defaultClient: "默认下载服务器",
-        autoUpdate: "自动更新官方数据（默认10天更新）",
+        autoUpdate: "自动更新官方数据",
         save: "保存",
         allowSelectionTextSearch: "启用页面内容选择搜索",
         allowDropToSend: "启用拖放链接到插件图标时，直接发送链接到下载服务器",
@@ -161,8 +174,10 @@ export default Vue.extend({
         searchResultRows: "搜索时每站点返回结果数量",
         saveDownloadHistory: "记录每次一键发送的种子信息，以供导出备份",
         connectClientTimeout:
-          "连接下载服务器超时时间（毫秒），超出后将中断连接",
-        noClient: "尚未配置下载服务器，请配置下载服务后再选择"
+          "连接下载服务器超时时间（毫秒，1000毫秒=1秒），超出后将中断连接",
+        noClient: "尚未配置下载服务器，请配置下载服务后再选择",
+        cacheIsCleared: "缓存已清除，如需立即生效，请重新打开页面",
+        saved: "参数已保存"
       },
       valid: false,
       rules: {
@@ -173,17 +188,32 @@ export default Vue.extend({
         search: {}
       },
       units: [] as any,
-      downloadHistory: [] as any
+      downloadHistory: [] as any,
+      haveError: false,
+      haveSuccess: false,
+      successMsg: "",
+      errorMsg: "",
+      lastUpdate: ""
     };
   },
   methods: {
     save() {
       console.log(this.options);
       this.$store.dispatch("saveConfig", this.options);
+      this.successMsg = this.words.saved;
     },
     clearCache() {
       if (confirm(this.words.clearCacheConfirm)) {
         APP.cache.clear();
+
+        setTimeout(() => {
+          extension
+            .sendRequest(EAction.reloadConfig)
+            .then(() => {
+              this.successMsg = this.words.cacheIsCleared;
+            })
+            .catch();
+        }, 200);
       }
     }
   },
@@ -197,6 +227,26 @@ export default Vue.extend({
       console.log("downloadHistory", result);
       this.downloadHistory = result;
     });
+    APP.cache
+      .getLastUpdateTime()
+      .then((time: number) => {
+        if (time > 0) {
+          this.lastUpdate = `（最后更新于 ${new Date(time).toLocaleString()}）`;
+        } else {
+          this.lastUpdate = " （更新时间未知）";
+        }
+      })
+      .catch(() => {
+        this.lastUpdate = " （更新时间获取失败）";
+      });
+  },
+  watch: {
+    successMsg() {
+      this.haveSuccess = this.successMsg != "";
+    },
+    errorMsg() {
+      this.haveError = this.errorMsg != "";
+    }
   },
   computed: {
     getClientAddress(): any {
@@ -215,3 +265,9 @@ export default Vue.extend({
   }
 });
 </script>
+<style lang="scss" scoped>
+.v-input--selection-controls {
+  margin: 0;
+  padding: 0;
+}
+</style>

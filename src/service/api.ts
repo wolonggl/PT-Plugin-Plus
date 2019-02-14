@@ -1,43 +1,35 @@
 import localStorage from "./localStorage";
 import md5 from "blueimp-md5";
+import { EConfigKey, DataResult, EDataResultType } from "@/interface/common";
 
-const API_RAW_URL =
-  "https://raw.githubusercontent.com/ronggang/PT-Plugin-Plus/master/resource";
-const API_URL =
-  "https://api.github.com/repos/ronggang/PT-Plugin-Plus/contents/resource";
-
-const TEST_API_URL = "http://localhost:8001";
-
+const isExtensionMode = !!(window["chrome"] && window.chrome.extension);
+const isLocalhost = window.location.hostname === "localhost";
+const RESOURCE_URL = isLocalhost
+  ? "http://localhost:8001"
+  : (isExtensionMode ? `chrome-extension://${chrome.runtime.id}` : "") +
+    "/resource";
 // 调试信息
-let developmentAPI = {
-  host: TEST_API_URL,
-  schemas: `${TEST_API_URL}/schema.json`,
-  schemaConfig: `${TEST_API_URL}/schemas/{$schema}/config.json`,
-  sites: `${TEST_API_URL}/sites.json`,
-  siteConfig: `${TEST_API_URL}/sites/{$site}/config.json`,
-  clients: `${TEST_API_URL}/clients.json`,
-  clientConfig: `${TEST_API_URL}/clients/{$client}/config.json`
-};
-
-let productAPI = {
-  host: API_RAW_URL,
-  schemas: `${API_URL}/schemas`,
-  schemaConfig: `${API_RAW_URL}/schemas/{$schema}/config.json`,
-  sites: `${API_URL}/sites`,
-  siteConfig: `${API_RAW_URL}/sites/{$site}/config.json`,
-  clients: `${API_URL}/clients`,
-  clientConfig: `${API_RAW_URL}/clients/{$client}/config.json`
+let RESOURCE_API = {
+  host: RESOURCE_URL,
+  schemas: `${RESOURCE_URL}/schema.json`,
+  schemaConfig: `${RESOURCE_URL}/schemas/{$schema}/config.json`,
+  sites: `${RESOURCE_URL}/sites.json`,
+  siteConfig: `${RESOURCE_URL}/sites/{$site}/config.json`,
+  clients: `${RESOURCE_URL}/clients.json`,
+  clientConfig: `${RESOURCE_URL}/clients/{$client}/config.json`,
+  latestReleases: `https://api.github.com/repos/ronggang/PT-Plugin-Plus/releases/latest`
 };
 
 export const APP = {
   debugMode: process.env.NODE_ENV === "development",
   scriptQueues: [] as any,
+  isExtensionMode: isExtensionMode,
   cache: {
     localStorage: new localStorage(),
-    cacheKey: "PT-Plugin-Plus-Cache-Contents",
+    cacheKey: EConfigKey.cache,
     contents: {} as any,
-    // 10 天
-    expires: 60 * 60 * 24 * 10,
+    // 1 天
+    expires: 60 * 60 * 24 * 1,
     init(callback?: any) {
       console.log("cache.init");
       this.localStorage.get(this.cacheKey, (result: any) => {
@@ -70,6 +62,7 @@ export const APP = {
      */
     set(key: string, content: string) {
       this.contents[md5(key)] = content;
+      this.contents["update"] = new Date().getTime();
       this.contents["expires"] = new Date().getTime() + this.expires;
       this.localStorage.set(this.cacheKey, this.contents);
     },
@@ -79,6 +72,21 @@ export const APP = {
     clear() {
       this.contents = {};
       this.localStorage.set(this.cacheKey, this.contents);
+    },
+    /**
+     * 获取缓存最后更新时间
+     */
+    getLastUpdateTime(): Promise<any> {
+      return new Promise<any>((resolve?: any, reject?: any) => {
+        this.localStorage.get(this.cacheKey, (result: any) => {
+          if (result) {
+            let update = result["update"];
+            resolve(update || 0);
+          } else {
+            reject();
+          }
+        });
+      });
     }
   },
   addScript(script: any) {
@@ -183,13 +191,20 @@ export const APP = {
       url: `${API.host}/${path}`,
       dataType: "text"
     });
+  },
+  /**
+   * 创建错误信息，用于函数返回
+   * @param msg
+   */
+  createErrorMessage(msg: any): DataResult {
+    return {
+      type: EDataResultType.error,
+      msg,
+      success: false
+    };
   }
 };
 
-if (APP.debugMode) {
-  productAPI = developmentAPI;
-}
-
 APP.cache.init();
 
-export const API = productAPI;
+export const API = RESOURCE_API;

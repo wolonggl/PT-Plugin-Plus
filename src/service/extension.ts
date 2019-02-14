@@ -25,16 +25,28 @@ export default class Extension {
   ): Promise<any> {
     return new Promise<any>((resolve?: any, reject?: any) => {
       if (this.isExtensionMode) {
-        chrome.runtime.sendMessage(
-          {
-            action,
-            data
-          },
-          (result: any) => {
-            callback && callback(result);
-            resolve(result);
-          }
-        );
+        try {
+          chrome.runtime.sendMessage(
+            {
+              action,
+              data
+            },
+            (result: any) => {
+              callback && callback(result);
+              if (
+                result &&
+                (result.status === "error" || result.success === false)
+              ) {
+                reject(result);
+              } else {
+                resolve(result);
+              }
+            }
+          );
+        } catch (error) {
+          reject(error);
+        }
+
         return;
       }
 
@@ -42,10 +54,14 @@ export default class Extension {
       PTService.requestMessage({
         action,
         data
-      }).then((result: any) => {
-        callback && callback.call(this, result);
-        resolve(result);
-      });
+      })
+        .then((result: any) => {
+          callback && callback.call(this, result);
+          resolve(result);
+        })
+        .catch((error: any) => {
+          reject(error);
+        });
     });
   }
 }

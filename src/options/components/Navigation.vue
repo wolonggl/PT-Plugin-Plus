@@ -1,7 +1,7 @@
 <template>
   <!-- 导航栏 -->
   <v-navigation-drawer clipped fixed v-model="drawer" app>
-    <v-list v-for="(group,index) in navs" :key="index">
+    <v-list v-for="(group,index) in navs" :key="index" dense>
       <v-subheader v-if="group.title" class="grey--text text--darken-1">{{group.title}}</v-subheader>
       <v-list-tile
         :to="item.key"
@@ -53,6 +53,11 @@ export default Vue.extend({
               key: "/home"
             },
             {
+              title: "搜索结果",
+              icon: "search",
+              key: "/search-torrent"
+            },
+            {
               title: "下载历史",
               icon: "history",
               key: "/history"
@@ -87,11 +92,11 @@ export default Vue.extend({
               icon: "folder_open",
               key: "/set-download-paths"
             },
-            // {
-            //   title: "搜索设置",
-            //   icon: "search",
-            //   key: "/set-search"
-            // },
+            {
+              title: "搜索方案",
+              icon: "widgets",
+              key: "/set-search-solution"
+            },
             {
               title: "参数备份与恢复",
               icon: "restore",

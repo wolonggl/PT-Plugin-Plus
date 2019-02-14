@@ -8,12 +8,16 @@ import {
   EDownloadClientType,
   DownloadOptions,
   DataResult,
-  EDataResultType
+  EDataResultType,
+  Request,
+  EModule
 } from "@/interface/common";
 import { filters as Filters } from "@/service/filters";
 import { ClientController } from "@/service/clientController";
 import { DownloadHistory } from "./downloadHistory";
 import { Searcher } from "./searcher";
+import PTPlugin from "./service";
+type Service = PTPlugin;
 export default class Controller {
   public options: Options = {
     sites: [],
@@ -26,10 +30,14 @@ export default class Controller {
   public optionsTabId: number | undefined = 0;
   public downloadHistory: DownloadHistory = new DownloadHistory();
   public clients: any = {};
-  public searcher: Searcher = new Searcher();
+  public searcher: Searcher = new Searcher(this.service);
 
   public clientController: ClientController = new ClientController();
   public isInitialized: boolean = false;
+
+  public contentPages: any[] = [];
+
+  constructor(public service: Service) {}
 
   public init(options: Options) {
     this.reset(options);
@@ -45,6 +53,7 @@ export default class Controller {
     this.clientController.init(options);
     this.searcher.options = options;
     this.initDefaultClient();
+    this.siteDefaultClients = {};
   }
 
   /**
@@ -53,34 +62,14 @@ export default class Controller {
    */
   public getSearchResult(options: any): Promise<any> {
     return this.searcher.searchTorrent(options.site, options.key);
-    // return new Promise<any>((resolve?: any, reject?: any) => {
-    //   let settings = {
-    //     url: options.url,
-    //     success: (result: any) => {
-    //       if (
-    //         (result && (typeof result == "string" && result.length > 100)) ||
-    //         typeof result == "object"
-    //       ) {
-    //         console.log(result);
+  }
 
-    //         // let script = options.scripts[index];
-    //         const results: any[] = [];
-    //         if (options.script) {
-    //           eval(options.script);
-    //         }
-
-    //         resolve(results);
-    //       } else {
-    //         reject();
-    //       }
-    //     },
-    //     error: (result: any) => {
-    //       reject(result);
-    //     }
-    //   };
-
-    //   $.ajax(settings);
-    // });
+  /**
+   * 取消一个正在执行的搜索请求
+   * @param options
+   */
+  public abortSearch(options: any): Promise<any> {
+    return this.searcher.abortSearch(options.site, options.key);
   }
 
   /**
@@ -147,10 +136,14 @@ export default class Controller {
       }
 
       this.getClient(clientConfig).then((result: any) => {
-        this.doDownload(result, data, data.savePath).then((result: any) => {
-          this.saveDownloadHistory(data, host, clientConfig.id);
-          resolve(result);
-        });
+        this.doDownload(result, data, data.savePath)
+          .then((result: any) => {
+            this.saveDownloadHistory(data, host, clientConfig.id);
+            resolve(result);
+          })
+          .catch((result: any) => {
+            reject(result);
+          });
       });
     });
   }
@@ -170,28 +163,32 @@ export default class Controller {
         this.initSiteDefaultClient(host).then((siteClientConfig: any) => {
           this.siteDefaultClients[host] = siteClientConfig;
 
-          this.doDownload(siteClientConfig, data, siteDefaultPath).then(
-            (result: any) => {
+          this.doDownload(siteClientConfig, data, siteDefaultPath)
+            .then((result: any) => {
               this.saveDownloadHistory(
                 data,
                 site.host,
                 siteClientConfig.options.id
               );
               resolve(result);
-            }
-          );
+            })
+            .catch((result: any) => {
+              reject(result);
+            });
         });
       } else {
-        this.doDownload(siteClientConfig, data, siteDefaultPath).then(
-          (result: any) => {
+        this.doDownload(siteClientConfig, data, siteDefaultPath)
+          .then((result: any) => {
             this.saveDownloadHistory(
               data,
               site.host,
               siteClientConfig.options.id
             );
             resolve(result);
-          }
-        );
+          })
+          .catch((result: any) => {
+            reject(result);
+          });
       }
     });
   }
@@ -215,15 +212,56 @@ export default class Controller {
           autoStart: data.autoStart
         })
         .then((result: any) => {
-          this.formatSendResult(
-            result,
-            clientConfig.options,
-            siteDefaultPath
-          ).then((result: any) => {
-            resolve(result);
+          this.service.logger.add({
+            module: EModule.background,
+            event: "service.controller.doDownload.finished",
+            msg: `下载服务器${clientConfig.options.name}处理[${
+              EAction.addTorrentFromURL
+            }]命令完成`,
+            data: result
           });
+
+          if (result && result.code === 0) {
+            switch (result.msg) {
+              // 连接超时
+              case "timeout":
+                reject({
+                  success: false,
+                  msg:
+                    "连接下载服务器超时，请检查网络设置或调整服务器超时时间！",
+                  status: "error"
+                });
+                break;
+
+              default:
+                reject({
+                  success: false,
+                  msg: result.msg,
+                  status: "error"
+                });
+                break;
+            }
+
+            return;
+          }
+
+          this.formatSendResult(result, clientConfig.options, siteDefaultPath)
+            .then((result: any) => {
+              resolve(result);
+            })
+            .catch((result: any) => {
+              reject(result);
+            });
         })
         .catch((result: any) => {
+          this.service.logger.add({
+            module: EModule.background,
+            event: "service.controller.doDownload.error",
+            msg: `下载服务器${clientConfig.options.name}处理[${
+              EAction.addTorrentFromURL
+            }]命令失败`,
+            data: result
+          });
           reject(result);
         });
     });
@@ -437,28 +475,60 @@ export default class Controller {
     this.optionsTabId = id;
   }
 
-  public openOptions(searchKey: string = "") {
+  /**
+   * 打开搜索种子页面
+   * @param key 关键字
+   * @param host 指定站点，默认搜索所有站
+   */
+  public searchTorrent(key: string = "", host: string = "") {
+    let url = "";
+    if (key) {
+      url = `search-torrent/${key}`;
+    }
+
+    if (host) {
+      url += `/${host}`;
+    }
+
+    this.openOptions(url);
+  }
+
+  /**
+   * 打开配置页
+   * @param path 要跳转的路径
+   */
+  public openOptions(path: string = "") {
+    let url = "/";
+    if (path) {
+      url += path;
+    }
+
     if (this.optionsTabId == 0) {
-      this.createOptionTab(searchKey);
+      this.createOptionTab(url);
     } else {
       chrome.tabs.get(this.optionsTabId as number, tab => {
         if (!chrome.runtime.lastError && tab) {
-          let url = "index.html";
-          if (searchKey) {
-            url = `index.html#/search-torrent/${searchKey}`;
-          }
-          chrome.tabs.update(tab.id as number, { selected: true, url: url });
+          chrome.tabs.update(tab.id as number, {
+            selected: true,
+            url: "index.html#" + url
+          });
         } else {
-          this.createOptionTab(searchKey);
+          this.createOptionTab(url);
         }
       });
     }
   }
 
-  private createOptionTab(searchKey: string = "") {
-    let url = "index.html";
-    if (searchKey) {
-      url = `index.html#/search-torrent/${searchKey}`;
+  /**
+   * 创建配置页面选项卡
+   * @param url
+   */
+  private createOptionTab(url: string = "") {
+    if (!url) {
+      return;
+    }
+    if (url.substr(0, 1) === "/") {
+      url = "index.html#" + url;
     }
     chrome.tabs.create(
       {
@@ -509,5 +579,69 @@ export default class Controller {
       }
     }
     return result;
+  }
+
+  /**
+   * 接收由前台发回的指令并执行
+   * @param action 指令
+   * @param callback 回调函数
+   */
+  public call(
+    request: Request,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<any> {
+    return new Promise<any>((resolve?: any, reject?: any) => {
+      let service: any = this;
+      service[request.action](request.data, sender)
+        .then((result: any) => {
+          resolve(result);
+        })
+        .catch((result: any) => {
+          reject(result);
+        });
+    });
+  }
+
+  public addContentPage(
+    data: any,
+    sender: chrome.runtime.MessageSender
+  ): Promise<any> {
+    return new Promise<any>((resolve?: any, reject?: any) => {
+      if (sender.tab) {
+        this.contentPages.push(sender.tab.id);
+      }
+      resolve();
+    });
+  }
+
+  /**
+   * 备份系统参数至Google
+   */
+  public backupToGoogle(): Promise<any> {
+    return this.service.config.backupToGoogle();
+  }
+
+  /**
+   * 从Google恢复系统参数
+   */
+  public restoreFromGoogle(): Promise<any> {
+    return this.service.config.restoreFromGoogle();
+  }
+
+  /**
+   * 从Google中清除已备份的参数
+   */
+  public clearFromGoogle(): Promise<any> {
+    return this.service.config.syncStorage.clear();
+  }
+
+  /**
+   * 重新从网络中加载配置文件
+   */
+  public reloadConfig(): Promise<any> {
+    return new Promise<any>((resolve?: any, reject?: any) => {
+      this.service.config.reload();
+      resolve();
+    });
   }
 }

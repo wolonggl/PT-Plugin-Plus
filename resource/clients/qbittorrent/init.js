@@ -28,6 +28,10 @@
       };
       this.api = {};
 
+      if (this.options.address.substr(-1) == "/") {
+        this.options.address = this.options.address.substr(0, this.options.address.length - 1);
+      }
+
       if (this.options.apiVer) {
         this.api = this.apiVer[this.options.apiVer];
       }
@@ -46,8 +50,12 @@
       return new Promise((resolve, reject) => {
         switch (action) {
           case "addTorrentFromURL":
-            this.addTorrentFromUrl(data.url, (result) => {
-              resolve(result);
+            this.addTorrentFromUrl(data, (result) => {
+              if (result.status === "success") {
+                resolve(result);
+              } else {
+                reject(result);
+              }
             });
             break;
 
@@ -83,20 +91,18 @@
           type: "POST",
           url: this.options.address + this.api.login,
           data: data,
-          timeout: PTBackgroundService.options.connectClientTimeout,
-          success: (resultData, textStatus, request) => {
-            this.isInitialized = true;
-            if (callback) {
-              callback(resultData);
-            }
-            resolve()
-            console.log(this.sessionId);
-          },
-          error: (jqXHR, textStatus, errorThrown) => {
-            reject(jqXHR.status, textStatus)
-          }
+          timeout: PTBackgroundService.options.connectClientTimeout
         };
-        $.ajax(settings);
+        $.ajax(settings).done((resultData, textStatus, request) => {
+          this.isInitialized = true;
+          if (callback) {
+            callback(resultData);
+          }
+          resolve()
+          console.log(this.sessionId);
+        }).fail((jqXHR, textStatus, errorThrown) => {
+          reject(jqXHR.status, textStatus)
+        });
       });
 
     }
@@ -120,13 +126,13 @@
         },
         error: (jqXHR, textStatus, errorThrown) => {
           console.log(jqXHR);
-          this.getSessionId.then(() => {
+          this.getSessionId().then(() => {
             this.exec(options, callback, tags);
           }).catch((code, msg) => {
             callback({
               status: "error",
               code,
-              msg
+              msg: msg || code === 0 ? "服务器不可用或网络错误" : "未知错误"
             })
           });
         }
@@ -139,7 +145,8 @@
      * @param {*} url 
      * @param {*} callback 
      */
-    addTorrentFromUrl(url, callback) {
+    addTorrentFromUrl(data, callback) {
+      let url = data.url;
       // 磁性连接（代码来自原版WEBUI）
       if (url.match(/^[0-9a-f]{40}$/i)) {
         url = 'magnet:?xt=urn:btih:' + url;
@@ -147,14 +154,13 @@
       this.exec({
         method: this.api.add,
         params: {
-          urls: url
+          urls: url,
+          savepath: data.savePath,
+          paused: !data.autoStart
         }
       }, (resultData) => {
         if (callback) {
-          var result = {
-            status: "",
-            msg: ""
-          }
+          var result = resultData;
           if (!resultData.error && resultData.result) {
             result.status = "success";
             result.msg = "URL已添加至 qBittorrent 。";

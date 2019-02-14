@@ -7,11 +7,12 @@
     "build": "vue-cli-service build && webpack --config webpack/prod.js",
     "lint": "vue-cli-service lint",
     "background": "webpack --config webpack/prod.js",
-    "dev-s": "cd test && tsc && node ./dist/index.js",
-    "dev": "vue-cli-service build --mode=development && webpack --config webpack/dev.js"
+    "dev": "vue-cli-service build --mode=development && webpack --config webpack/dev.js",
+    "dev-s": "cd test && yarn install && tsc && node ./dist/index.js"
   },
   "dependencies": {
     "blueimp-md5": "^2.10.0",
+    "extend": "^3.0.2",
     "file-saver": "^2.0.0",
     "moment": "^2.23.0",
     "url-parse": "^1.4.4",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/blueimp-md5": "^2.7.0",
     "@types/chrome": "^0.0.75",
+    "@types/extend": "^3.0.0",
     "@types/file-saver": "^2.0.0",
     "@types/jquery": "^3.3.22",
     "@types/url-parse": "^1.4.2",
@@ -34,6 +36,7 @@
     "@vue/cli-service": "^3.0.5",
     "@vue/eslint-config-typescript": "^3.2.0",
     "babel-eslint": "^10.0.1",
+    "copy-webpack-plugin": "^4.6.0",
     "eslint": "^5.8.0",
     "eslint-plugin-vue": "^5.0.0-0",
     "node-sass": "^4.10.0",
